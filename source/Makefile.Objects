@@ -420,6 +420,7 @@ OBJS_IO=input.o\
     to_wannier90_pw.o\
     to_wannier90_lcao_in_pw.o\
     to_wannier90_lcao.o\
+    fR_overlap.o\
     unk_overlap_pw.o\
     write_wfc_pw.o\
     winput.o\

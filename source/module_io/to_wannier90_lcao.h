@@ -47,6 +47,8 @@
 
 #include "module_base/abfs-vector3_order.h"
 #include "module_base/math_lebedev_laikov.h"
+#include "module_hamilt_lcao/module_hcontainer/hcontainer.h"
+#include "fR_overlap.h"
 
 class toWannier90_LCAO : public toWannier90
 {
@@ -102,7 +104,6 @@ class toWannier90_LCAO : public toWannier90
 
     std::vector<ModuleBase::Vector3<double>> R_coor_car;
     std::vector<std::vector<std::vector<double>>> psi_psiA_R;
-    ModuleBase::Lebedev_laikov_grid* Leb_grid = nullptr;
 
     std::vector<int> iw2it;
     std::vector<int> iw2ia;
@@ -118,7 +119,7 @@ class toWannier90_LCAO : public toWannier90
     void set_R_coor();
     void count_delta_k(const K_Vectors& kv);
 
-    std::set<Abfs::Vector3_Order<double>> delta_k_all;
+    std::vector<Abfs::Vector3_Order<double>> delta_k_all;
     std::map<Abfs::Vector3_Order<double>, int> delta_k_all_index;
 
 
@@ -160,6 +161,7 @@ class toWannier90_LCAO : public toWannier90
       ModuleBase::ComplexMatrix &Amn
     );
 
+    std::vector<FR_overlap<std::complex<double>>> FR;
 };
 
 #endif

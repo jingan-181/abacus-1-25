@@ -8,6 +8,9 @@
 #include "module_base/parallel_reduce.h"
 #include "module_base/scalapack_connector.h"
 #include <fstream>
+#include "fR_overlap.h"
+#include "module_hamilt_lcao/module_hcontainer/atom_pair.h"
+#include <functional>
 
 toWannier90_LCAO::toWannier90_LCAO(
     const bool &out_wannier_mmn, 
@@ -24,11 +27,7 @@ toWannier90_LCAO::toWannier90_LCAO(
 
 toWannier90_LCAO::~toWannier90_LCAO()
 {
-    if(Leb_grid)
-    {
-        delete[] Leb_grid;
-        Leb_grid = nullptr;
-    }
+
 }
 
 void toWannier90_LCAO::calculate(
@@ -56,12 +55,6 @@ void toWannier90_LCAO::calculate(
         {
             ModuleBase::WARNING_QUIT("toWannier90::calculate", "Error wannier_spin set,is not \"up\" or \"down\" ");
         }
-    }
-
-    if (out_wannier_mmn)
-    {
-        int degree = 110;
-        Leb_grid = new ModuleBase::Lebedev_laikov_grid(degree);
     }
 
     if (out_wannier_mmn || out_wannier_amn)
@@ -125,6 +118,24 @@ void toWannier90_LCAO::calculate(
 
     if (out_wannier_mmn)
     {
+        int dk_size = delta_k_all.size();
+        this->FR.resize(dk_size);
+        std::function<std::complex<double> (ModuleBase::Vector3<double>)> fr_ptr[dk_size];
+        for (int i = 0; i < dk_size; i++)
+        {
+            ModuleBase::Vector3<double> delta_k(delta_k_all[i].x, delta_k_all[i].y, delta_k_all[i].z);
+
+            fr_ptr[i] = [delta_k](ModuleBase::Vector3<double> r) -> std::complex<double>
+                {
+                    double phase = delta_k * r;
+                    std::complex<double> exp_idkr = std::exp(-1.0*ModuleBase::IMAG_UNIT*phase);
+                    return exp_idkr;
+                };
+
+            FR[i].set_parameters(fr_ptr[i], &GlobalC::ucell, &GlobalC::GridD, ParaV, 140, 110);
+            FR[i].calculate_FR();
+        }
+
         cal_Mmn(kv, psi);
     }
 
@@ -142,8 +153,6 @@ void toWannier90_LCAO::calculate(
 
 void toWannier90_LCAO::cal_Mmn(const K_Vectors& kv, const psi::Psi<std::complex<double>>& psi)
 {
-    cal_orb_expidkr_overlap_table();
-
     // write .mmn file
     std::ofstream mmn_file;
 
@@ -302,6 +311,7 @@ void toWannier90_LCAO::set_R_coor()
 
 void toWannier90_LCAO::count_delta_k(const K_Vectors& kv)
 {
+    std::set<Abfs::Vector3_Order<double>> delta_k_all_tmp;
     for (int ik = 0; ik < cal_num_kpts; ik++)
     {
         for (int ib = 0; ib < nntot; ib++)
@@ -315,14 +325,17 @@ void toWannier90_LCAO::count_delta_k(const K_Vectors& kv)
             ModuleBase::Vector3<double> ik_car = kv.kvec_c[ik];
             ModuleBase::Vector3<double> ikb_car = kv.kvec_c[ikb] + G * GlobalC::ucell.G;
             Abfs::Vector3_Order<double> dk = (ikb_car - ik_car) * GlobalC::ucell.tpiba;
-            delta_k_all.insert(dk);
+            delta_k_all_tmp.insert(dk);
         }
     }
 
+    delta_k_all.resize(delta_k_all_tmp.size());
+
     int index = 0;
-    for (auto &delta_k : delta_k_all)
+    for (auto &delta_k : delta_k_all_tmp)
     {
         delta_k_all_index[delta_k] = index;
+        delta_k_all[index] = delta_k;
         index++;
     }
 }
@@ -408,6 +421,10 @@ void toWannier90_LCAO::cal_orb_expidkr_overlap(
     std::vector<std::complex<double>> &overlap
 )
 {
+    ModuleBase::Lebedev_laikov_grid Leb_grid(110);
+    Leb_grid.generate_grid_points();
+    Leb_grid.print_grid_and_weight("Leb_grid.dat");
+
     int T1 = iw2it[iw1];
     int L1 = iw2iL[iw1];
     int N1 = iw2iN[iw1];
@@ -427,7 +444,7 @@ void toWannier90_LCAO::cal_orb_expidkr_overlap(
     double dr2 = orbs[T2][L2][N2].getRab(0);
 
     int ridial_grid_num = 140;
-    int angular_grid_num = Leb_grid->degree;
+    int angular_grid_num = Leb_grid.degree;
 
     double xmin = 0.0;
     double xmax = Rcut1;
@@ -435,13 +452,16 @@ void toWannier90_LCAO::cal_orb_expidkr_overlap(
     double *weights_ridial = new double[ridial_grid_num];
     ModuleBase::Integral::Gauss_Legendre_grid_and_weight(xmin, xmax, ridial_grid_num, r_ridial, weights_ridial);
 
+    std::ofstream ofs("check.dat");
+    ofs << "check Ylm and ridial" << std::endl;
+
     int delta_k_size = delta_k_all.size();
     for (int ir = 0; ir < ridial_grid_num; ir++)
     {
         std::vector<std::complex<double>> result_angular(delta_k_size, 0.0);
         for (int ian = 0; ian < angular_grid_num; ian++)
         {
-            ModuleBase::Vector3<double> r_angular_tmp = Leb_grid->get_grid_coor()[ian];
+            ModuleBase::Vector3<double> r_angular_tmp = Leb_grid.get_grid_coor()[ian];
 
             ModuleBase::Vector3<double> r_coor = r_ridial[ir] * r_angular_tmp;
             ModuleBase::Vector3<double> tmp_r_coor = r_coor - (iw2_center - iw1_center);
@@ -460,7 +480,18 @@ void toWannier90_LCAO::cal_orb_expidkr_overlap(
             std::vector<double> rly2;
             ModuleBase::Ylm::rl_sph_harm (L2, tmp_r_unit.x, tmp_r_unit.y, tmp_r_unit.z, rly2);
 
-            double weights_angular = Leb_grid->get_weight()[ian];
+            ofs << std::setw(20) << std::setprecision(10) << std::fixed << rly1[L1*L1+m1]
+                << std::setw(20) << std::setprecision(10) << std::fixed << Polynomial_Interpolation(psi_r1, mesh_r1, dr1, r_ridial[ir])
+                << std::setw(20) << std::setprecision(10) << std::fixed << rly2[L2*L2+m2]
+                << std::setw(20) << std::setprecision(10) << std::fixed << Polynomial_Interpolation(psi_r2, mesh_r2, dr2, tmp_r_coor_norm)
+                << std::setw(20) << std::setprecision(10) << std::fixed << r_ridial[ir]
+                << std::setw(20) << std::setprecision(10) << std::fixed << tmp_r_coor_norm
+                << std::setw(20) << std::setprecision(10) << std::fixed << std::abs(tmp_r_coor_norm - r_ridial[ir]) 
+                << std::setw(20) << std::setprecision(10) << std::fixed << r_angular_tmp.norm();
+                
+            ofs << std::endl;
+
+            double weights_angular = Leb_grid.get_weight()[ian];
 
             int count_ik = 0;
             for (auto &delta_k : delta_k_all)
@@ -492,6 +523,7 @@ void toWannier90_LCAO::cal_orb_expidkr_overlap(
         
     delete[] r_ridial;
     delete[] weights_ridial;
+    
 }
 
 
@@ -570,29 +602,35 @@ void toWannier90_LCAO::unkdotkb(
     Abfs::Vector3_Order<double> dk = (ikb_car - ik_car) * GlobalC::ucell.tpiba;
     int delta_k_index = delta_k_all_index[dk];
 
-    int ir, ic;
-    for(int iw1 = 0; iw1 < GlobalV::NLOCAL; iw1++)
+    hamilt::HContainer<std::complex<double>> *tmp_FR_container = FR[delta_k_index].get_FR_pointer();
+    auto row_indexes = ParaV->get_indexes_row();
+    auto col_indexes = ParaV->get_indexes_col();
+
+    for(int iap = 0; iap < tmp_FR_container->size_atom_pairs(); ++iap)
     {
-        ir = this->ParaV->global2local_row(iw1);
-        if(ir >= 0)
+        int atom_i = tmp_FR_container->get_atom_pair(iap).get_atom_i();
+        int atom_j = tmp_FR_container->get_atom_pair(iap).get_atom_j();
+        int start_i = ParaV->atom_begin_row[atom_i];
+        int start_j = ParaV->atom_begin_col[atom_j];
+        int row_size = ParaV->get_row_size(atom_i);
+        int col_size = ParaV->get_col_size(atom_j);
+        for(int iR = 0; iR < tmp_FR_container->get_atom_pair(iap).get_R_size(); ++iR)
         {
-            for(int iw2 = 0; iw2 < GlobalV::NLOCAL; iw2++)
-            {							
-                ic = this->ParaV->global2local_col(iw2);
-                if(ic >= 0)
+            auto& matrix = tmp_FR_container->get_atom_pair(iap).get_HR_values(iR);
+            int* r_index = tmp_FR_container->get_atom_pair(iap).get_R_index(iR);
+            ModuleBase::Vector3<double> dR = ModuleBase::Vector3<double>(r_index[0], r_index[1], r_index[2]) * GlobalC::ucell.latvec;
+            double phase = ikb_car * dR * ModuleBase::TWO_PI;
+            std::complex<double> kRn_phase = std::exp(ModuleBase::IMAG_UNIT * phase);
+            for(int i = 0; i < row_size; ++i)
+            {
+                int mu = row_indexes[start_i+i];
+                int ir = ParaV->global2local_row(mu);
+                for(int j = 0; j < col_size; ++j)
                 {
+                    int nu = col_indexes[start_j+j];
+                    int ic = ParaV->global2local_col(nu);
                     int index = ic * row + ir;
-                    ModuleBase::Vector3<double> tau1 = GlobalC::ucell.atoms[ iw2it[iw1] ].tau[ iw2ia[iw1] ];
-                    ModuleBase::Vector3<double> tau2 = GlobalC::ucell.atoms[ iw2it[iw2] ].tau[ iw2ia[iw2] ];
-
-                    for(int iR = 0; iR < R_num; iR++)
-                    {
-                        ModuleBase::Vector3<double> R = R_coor_car[iR];
-                        double phase = ikb_car * R * ModuleBase::TWO_PI;
-                        std::complex<double> kRn_phase = std::exp(ModuleBase::IMAG_UNIT * phase);
-                        midmatrix[index] = midmatrix[index] + kRn_phase * psi_eidkr_psi_R[iR][ir][ic][delta_k_index];
-                    }
-
+                    midmatrix[index] += kRn_phase * matrix.get_value(i,j);
                 }
             }
         }
@@ -633,7 +671,7 @@ void toWannier90_LCAO::unkdotkb(
         if (exclude_bands.count(m)) continue;
         count_m++;
 
-        ir = this->ParaV->global2local_row(m);
+        int ir = this->ParaV->global2local_row(m);
         if(ir >= 0)
         {
             int count_n = -1;
@@ -642,7 +680,7 @@ void toWannier90_LCAO::unkdotkb(
                 if (exclude_bands.count(n)) continue;
                 count_n++;
 				
-                ic = this->ParaV->global2local_col(n);
+                int ic = this->ParaV->global2local_col(n);
                 if(ic >= 0)
                 {
                     int index = ic * row + ir;

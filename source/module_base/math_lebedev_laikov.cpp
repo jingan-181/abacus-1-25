@@ -43,36 +43,13 @@ void Lebedev_laikov_grid::print_grid_and_weight(std::string filename)
     std::stringstream ss;
     ss << filename << "_degree" << degree;
     std::ofstream ofs(ss.str().c_str());
-    ofs.precision(15);
-    ofs.width(20);
+    ofs << "# grid:            x                   y                   z              weight" << std::endl;
     for (int i = 0; i < degree; i++)
     {
-        if (i != 0 || i % 10 == 0) ofs << std::endl;
-        ofs << std::fixed << grid_coor[i].x;
-    }
-
-    ofs << std::endl;
-
-    for (int i = 0; i < degree; i++)
-    {
-        if (i != 0 || i % 10 == 0) ofs << std::endl;
-        ofs << std::fixed << grid_coor[i].y;
-    }
-
-    ofs << std::endl;
-
-    for (int i = 0; i < degree; i++)
-    {
-        if (i != 0 || i % 10 == 0) ofs << std::endl;
-        ofs << std::fixed << grid_coor[i].z;
-    }
-
-    ofs << std::endl;
-
-    for (int i = 0; i < degree; i++)
-    {
-        if (i != 0 || i % 10 == 0) ofs << std::endl;
-        ofs << std::fixed << weight[i];
+        ofs << std::setw(20) << std::setprecision(15) << std::fixed << grid_coor[i].x;
+        ofs << std::setw(20) << std::setprecision(15) << std::fixed << grid_coor[i].y;
+        ofs << std::setw(20) << std::setprecision(15) << std::fixed << grid_coor[i].z;
+        ofs << std::setw(20) << std::setprecision(15) << std::fixed << weight[i] << std::endl;
     }
 
     ofs.close();
@@ -5103,7 +5080,7 @@ int Lebedev_laikov_grid::getLebedevReccurencePoints(int type, int start, double 
         grid_coor[start + 11].x = -a;
         grid_coor[start + 11].y = 0.0;
         grid_coor[start + 11].z = -b;
-        grid_coor[start + 11] = 4.0 * pi * v;
+        weight[start + 11] = 4.0 * pi * v;
 
         grid_coor[start + 12].x = b;
         grid_coor[start + 12].y = 0.0;
