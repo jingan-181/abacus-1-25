@@ -132,7 +132,7 @@ void ESolver_KS_PW<T, Device>::Init_GlobalC(Input& inp, UnitCell& cell)
     }
     else // old method
     {
-        this->psi = this->wf.allocate(this->kv.nks, this->kv.ngk.data(), this->pw_wfc->npwk_max);
+        this->psi = this->wf.allocate(this->kv.nkstot, this->kv.nks, this->kv.ngk.data(), this->pw_wfc->npwk_max);
     }
     //=======================
     // init pseudopotential
@@ -397,6 +397,12 @@ void ESolver_KS_PW<T, Device>::beforescf(int istep)
     {
         this->pelec->f_en.ewald_energy = H_Ewald_pw::compute_ewald(GlobalC::ucell, this->pw_rhod, this->sf.strucFac);
     }
+
+    //=========================================================
+    // cal_ux should be called before init_scf because
+    // the direction of ux is used in noncoline_rho
+    //=========================================================
+    if(GlobalV::NSPIN == 4 && GlobalV::DOMAG) GlobalC::ucell.cal_ux();
 
     //=========================================================
     // calculate the total local pseudopotential in real space
