@@ -8,6 +8,7 @@
 #include "module_base/parallel_reduce.h"
 #include "binstream.h"
 
+#ifdef __LCAO
 toWannier90_LCAO_IN_PW::toWannier90_LCAO_IN_PW(
     const bool &out_wannier_mmn, 
     const bool &out_wannier_amn, 
@@ -294,3 +295,4 @@ void toWannier90_LCAO_IN_PW::get_lcao_wfc_global_ik(
 #endif
 
 }
+#endif

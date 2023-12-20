@@ -43,7 +43,7 @@
 #ifdef __LCAO
 #include "module_hamilt_lcao/hamilt_lcaodft/local_orbital_wfc.h"
 #include "module_hamilt_lcao/module_gint/grid_technique.h"
-#endif
+
 
 #include "module_base/abfs-vector3_order.h"
 #include "module_base/math_lebedev_laikov.h"
@@ -162,5 +162,5 @@ class toWannier90_LCAO : public toWannier90
 
     std::vector<FR_overlap<std::complex<double>>> FR;
 };
-
+#endif
 #endif

@@ -1,5 +1,5 @@
+#ifdef __LCAO
 #include "fR_overlap.h"
-
 #include "module_basis/module_ao/ORB_read.h"
 #include "module_base/timer.h"
 #include "module_base/tool_title.h"
@@ -375,3 +375,5 @@ double FR_overlap<T>::Polynomial_Interpolation(
 // T of FR_overlap can be double or complex<double>
 template class FR_overlap<double>;
 template class FR_overlap<std::complex<double>>;
+
+#endif

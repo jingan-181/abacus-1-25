@@ -12,6 +12,7 @@
 #include "module_hamilt_lcao/module_hcontainer/atom_pair.h"
 #include <functional>
 
+#ifdef __LCAO
 toWannier90_LCAO::toWannier90_LCAO(
     const bool &out_wannier_mmn, 
     const bool &out_wannier_amn, 
@@ -1039,3 +1040,4 @@ void toWannier90_LCAO::unkdotA(
 #endif
 
 }
+#endif

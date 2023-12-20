@@ -1,6 +1,6 @@
 #ifndef FR_OVERLAP_H
 #define FR_OVERLAP_H
-
+#ifdef __LCAO
 #include <complex>
 #include <functional>
 #include "module_basis/module_ao/parallel_orbitals.h"
@@ -60,5 +60,5 @@ protected:
     ModuleBase::Lebedev_laikov_grid *Leb_grid = nullptr;
     hamilt::HContainer<T> *FR_container = nullptr;
 };
-
+#endif
 #endif

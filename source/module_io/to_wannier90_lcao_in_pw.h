@@ -24,7 +24,6 @@
 #include "module_basis/module_ao/ORB_gaunt_table.h"
 #include "module_basis/module_ao/ORB_atomic_lm.h"
 #include "module_basis/module_ao/ORB_read.h"
-#include "module_basis/module_ao/parallel_orbitals.h"
 #include "module_base/vector3.h"
 #include "module_base/abfs-vector3_order.h"
 #include "module_base/ylm.h"
@@ -36,9 +35,10 @@
 #include "module_hamilt_pw/hamilt_pwdft/global.h"
 
 #ifdef __LCAO
+#include "module_basis/module_ao/parallel_orbitals.h"
 #include "module_hamilt_lcao/hamilt_lcaodft/local_orbital_wfc.h"
 #include "module_hamilt_lcao/module_gint/grid_technique.h"
-#endif
+
 
 class toWannier90_LCAO_IN_PW : public toWannier90_PW
 {
@@ -97,5 +97,6 @@ class toWannier90_LCAO_IN_PW : public toWannier90_PW
 
     void get_lcao_wfc_global_ik(const int ik, const psi::Psi<std::complex<double>>& psi_in, ModuleBase::ComplexMatrix &lcao_wfc_global);
 };
+#endif
 
 #endif
