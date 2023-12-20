@@ -120,7 +120,7 @@ void toWannier90_LCAO::calculate(
     {
         int dk_size = delta_k_all.size();
         this->FR.resize(dk_size);
-        std::function<std::complex<double> (ModuleBase::Vector3<double>)> fr_ptr[dk_size];
+        std::vector<std::function<std::complex<double> (ModuleBase::Vector3<double>)>> fr_ptr(dk_size);
         for (int i = 0; i < dk_size; i++)
         {
             ModuleBase::Vector3<double> delta_k(delta_k_all[i].x, delta_k_all[i].y, delta_k_all[i].z);
@@ -311,7 +311,7 @@ void toWannier90_LCAO::set_R_coor()
 
 void toWannier90_LCAO::count_delta_k(const K_Vectors& kv)
 {
-    std::set<Abfs::Vector3_Order<double>> delta_k_all_tmp;
+    std::set<Coordinate_3D> delta_k_all_tmp;
     for (int ik = 0; ik < cal_num_kpts; ik++)
     {
         for (int ib = 0; ib < nntot; ib++)
@@ -325,7 +325,8 @@ void toWannier90_LCAO::count_delta_k(const K_Vectors& kv)
             ModuleBase::Vector3<double> ik_car = kv.kvec_c[ik];
             ModuleBase::Vector3<double> ikb_car = kv.kvec_c[ikb] + G * GlobalC::ucell.G;
             Abfs::Vector3_Order<double> dk = (ikb_car - ik_car) * GlobalC::ucell.tpiba;
-            delta_k_all_tmp.insert(dk);
+            Coordinate_3D temp_dk(dk.x, dk.y, dk.z);
+            delta_k_all_tmp.insert(temp_dk);
         }
     }
 
@@ -339,245 +340,6 @@ void toWannier90_LCAO::count_delta_k(const K_Vectors& kv)
         index++;
     }
 }
-
-void toWannier90_LCAO::cal_orb_expidkr_overlap_table()
-{
-    int delta_k_size = delta_k_all.size();
-    int row = this->ParaV->get_row_size();
-    int col = this->ParaV->get_col_size();
-    int R_num = R_coor_car.size();
-
-    psi_eidkr_psi_R.resize(R_num);
-    for (int iR = 0; iR < R_num; iR++)
-    {
-        psi_eidkr_psi_R[iR].resize(row);
-        for(int ir = 0; ir < row; ir++)
-        {
-            psi_eidkr_psi_R[iR][ir].resize(col);
-            for (int ic = 0; ic < col; ic++)
-            {
-                psi_eidkr_psi_R[iR][ir][ic].resize(delta_k_size, 0.0);
-            }
-        } 
-    }
-
-    int ir, ic;
-    for (int iR = 0; iR < R_num; iR++)
-    {
-        for(int iw1 = 0; iw1 < GlobalV::NLOCAL; iw1++)
-        {
-            ir = this->ParaV->global2local_row(iw1);
-            if(ir >= 0)
-            {
-                for(int iw2 = 0; iw2 < GlobalV::NLOCAL; iw2++)
-                {							
-                    ic = this->ParaV->global2local_col(iw2);
-                    if(ic >= 0)
-                    {
-                        int orb_index_row = iw1 / GlobalV::NPOL;
-                        int orb_index_col = iw2 / GlobalV::NPOL;
-
-                        // The off-diagonal term in SOC calculaiton is zero, and the two diagonal terms are the same
-                        int new_index = iw1 - GlobalV::NPOL*orb_index_row + (iw2 - GlobalV::NPOL*orb_index_col)*GlobalV::NPOL;
-                        
-                        if(new_index == 0 || new_index == 3)
-                        {
-                            int it1 = iw2it[orb_index_row];  
-                            int ia1 = iw2ia[orb_index_row];  
-                            int iN1 = iw2iN[orb_index_row];  
-                            int iL1 = iw2iL[orb_index_row];  
-                            int im1 = iw2im[orb_index_row]; 
-                            double Rcut1 = orbs[it1][iL1][iN1].getRcut();
-
-                            int it2 = iw2it[orb_index_col];  
-                            int ia2 = iw2ia[orb_index_col];  
-                            int iN2 = iw2iN[orb_index_col];  
-                            int iL2 = iw2iL[orb_index_col];  
-                            int im2 = iw2im[orb_index_col];
-                            double Rcut2 = orbs[it2][iL2][iN2].getRcut();
-
-                            ModuleBase::Vector3<double> R_car = R_coor_car[iR];
-                            ModuleBase::Vector3<double> iw1_center = GlobalC::ucell.atoms[it1].tau[ia1] * GlobalC::ucell.lat0;
-                            ModuleBase::Vector3<double> iw2_center = (GlobalC::ucell.atoms[it2].tau[ia2] + R_car) * GlobalC::ucell.lat0;
-
-                            double r_distance = (iw2_center - iw1_center).norm();
-                            if (r_distance > Rcut1 + Rcut2) continue;
-
-                            cal_orb_expidkr_overlap(orb_index_row, iw1_center, orb_index_col, iw2_center, psi_eidkr_psi_R[iR][ir][ic]);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-}
-
-void toWannier90_LCAO::cal_orb_expidkr_overlap(
-    const int &iw1, 
-    const ModuleBase::Vector3<double> &iw1_center, 
-    const int &iw2, 
-    const ModuleBase::Vector3<double> &iw2_center,
-    std::vector<std::complex<double>> &overlap
-)
-{
-    ModuleBase::Lebedev_laikov_grid Leb_grid(110);
-    Leb_grid.generate_grid_points();
-    Leb_grid.print_grid_and_weight("Leb_grid.dat");
-
-    int T1 = iw2it[iw1];
-    int L1 = iw2iL[iw1];
-    int N1 = iw2iN[iw1];
-    int m1 = iw2im[iw1];
-    double Rcut1 = orbs[T1][L1][N1].getRcut();
-    const double *psi_r1 = orbs[T1][L1][N1].getPsi();
-    int mesh_r1 = orbs[T1][L1][N1].getNr();
-    double dr1 = orbs[T1][L1][N1].getRab(0);
-
-    int T2 = iw2it[iw2];
-    int L2 = iw2iL[iw2];
-    int N2 = iw2iN[iw2];
-    int m2 = iw2im[iw2];
-    double Rcut2 = orbs[T2][L2][N2].getRcut();
-    const double *psi_r2 = orbs[T2][L2][N2].getPsi();
-    int mesh_r2 = orbs[T2][L2][N2].getNr();
-    double dr2 = orbs[T2][L2][N2].getRab(0);
-
-    int ridial_grid_num = 140;
-    int angular_grid_num = Leb_grid.degree;
-
-    double xmin = 0.0;
-    double xmax = Rcut1;
-    double *r_ridial = new double[ridial_grid_num];
-    double *weights_ridial = new double[ridial_grid_num];
-    ModuleBase::Integral::Gauss_Legendre_grid_and_weight(xmin, xmax, ridial_grid_num, r_ridial, weights_ridial);
-
-    std::ofstream ofs("check.dat");
-    ofs << "check Ylm and ridial" << std::endl;
-
-    int delta_k_size = delta_k_all.size();
-    for (int ir = 0; ir < ridial_grid_num; ir++)
-    {
-        std::vector<std::complex<double>> result_angular(delta_k_size, 0.0);
-        for (int ian = 0; ian < angular_grid_num; ian++)
-        {
-            ModuleBase::Vector3<double> r_angular_tmp = Leb_grid.get_grid_coor()[ian];
-
-            ModuleBase::Vector3<double> r_coor = r_ridial[ir] * r_angular_tmp;
-            ModuleBase::Vector3<double> tmp_r_coor = r_coor - (iw2_center - iw1_center);
-            double tmp_r_coor_norm = tmp_r_coor.norm();
-            ModuleBase::Vector3<double> tmp_r_unit;
-            if (tmp_r_coor_norm > 1e-10)
-            {
-                tmp_r_unit = tmp_r_coor / tmp_r_coor_norm;
-            }
-
-            if (tmp_r_coor_norm > Rcut2) continue;
-
-            std::vector<double> rly1;
-            ModuleBase::Ylm::rl_sph_harm (L1, r_angular_tmp.x, r_angular_tmp.y, r_angular_tmp.z, rly1);
-
-            std::vector<double> rly2;
-            ModuleBase::Ylm::rl_sph_harm (L2, tmp_r_unit.x, tmp_r_unit.y, tmp_r_unit.z, rly2);
-
-            ofs << std::setw(20) << std::setprecision(10) << std::fixed << rly1[L1*L1+m1]
-                << std::setw(20) << std::setprecision(10) << std::fixed << Polynomial_Interpolation(psi_r1, mesh_r1, dr1, r_ridial[ir])
-                << std::setw(20) << std::setprecision(10) << std::fixed << rly2[L2*L2+m2]
-                << std::setw(20) << std::setprecision(10) << std::fixed << Polynomial_Interpolation(psi_r2, mesh_r2, dr2, tmp_r_coor_norm)
-                << std::setw(20) << std::setprecision(10) << std::fixed << r_ridial[ir]
-                << std::setw(20) << std::setprecision(10) << std::fixed << tmp_r_coor_norm
-                << std::setw(20) << std::setprecision(10) << std::fixed << std::abs(tmp_r_coor_norm - r_ridial[ir]) 
-                << std::setw(20) << std::setprecision(10) << std::fixed << r_angular_tmp.norm();
-                
-            ofs << std::endl;
-
-            double weights_angular = Leb_grid.get_weight()[ian];
-
-            int count_ik = 0;
-            for (auto &delta_k : delta_k_all)
-            {
-                double phase = delta_k * r_coor;
-                std::complex<double> exp_idkr = std::exp(-1.0*ModuleBase::IMAG_UNIT*phase);
-                result_angular[count_ik] += exp_idkr * rly1[L1*L1+m1] * rly2[L2*L2+m2]
-                                          * Polynomial_Interpolation(psi_r2, mesh_r2, dr2, tmp_r_coor_norm)
-                                          * weights_angular;
-                count_ik++;
-            }
-        }
-
-        int count_ik2 = 0;
-        for (auto &delta_k : delta_k_all)
-        {
-            overlap[count_ik2] += Polynomial_Interpolation(psi_r1, mesh_r1, dr1, r_ridial[ir]) * r_ridial[ir] * r_ridial[ir] * result_angular[count_ik2] * weights_ridial[ir];
-            count_ik2++;
-        }
-    }
-
-    int count_ik3 = 0;
-    for (auto &delta_k : delta_k_all)
-    {
-        double phase = delta_k * iw1_center;
-        overlap[count_ik3] *= std::exp(-1.0*ModuleBase::IMAG_UNIT*phase);
-        count_ik3++;
-    }
-        
-    delete[] r_ridial;
-    delete[] weights_ridial;
-    
-}
-
-
-double toWannier90_LCAO::Polynomial_Interpolation(
-    const double *psi_r,
-    const int &mesh_r,
-    const double &dr,
-    const double &x	
-)
-{
-    const double position = x / dr;
-    const int iq = static_cast<int>(position);
-
-    double t1 = 0.0;
-    double t2 = 0.0;
-    double t3 = 0.0;
-    double t4 = 0.0;
-
-    if (iq <= mesh_r - 4)
-    {
-        t1 = psi_r[iq];
-        t2 = psi_r[iq+1];
-        t3 = psi_r[iq+2];
-        t4 = psi_r[iq+3];
-    }
-    else if (iq == mesh_r - 3)
-    {
-        t1 = psi_r[iq];
-        t2 = psi_r[iq+1];
-        t3 = psi_r[iq+2];
-    }
-    else if (iq == mesh_r - 2)
-    {
-        t1 = psi_r[iq];
-        t2 = psi_r[iq+1];
-    }
-    else if (iq == mesh_r - 1)
-    {
-        t1 = psi_r[iq];
-    }
-
-    const double x0 = position - static_cast<double>(iq);
-    const double x1 = 1.0 - x0;
-    const double x2 = 2.0 - x0;
-    const double x3 = 3.0 - x0;
-    const double y =
-        t1 * x1 * x2 * x3 / 6.0 +
-        t2 * x0 * x2 * x3 / 2.0 -
-        t3 * x1 * x0 * x3 / 2.0 +
-        t4 * x1 * x2 * x0 / 6.0 ;
-
-    return y;
-}
-
 
 void toWannier90_LCAO::unkdotkb(
     const K_Vectors& kv, 
@@ -600,7 +362,8 @@ void toWannier90_LCAO::unkdotkb(
     ModuleBase::Vector3<double> ik_car = kv.kvec_c[ik];
     ModuleBase::Vector3<double> ikb_car = kv.kvec_c[ikb] + G * GlobalC::ucell.G;
     Abfs::Vector3_Order<double> dk = (ikb_car - ik_car) * GlobalC::ucell.tpiba;
-    int delta_k_index = delta_k_all_index[dk];
+    Coordinate_3D temp_dk(dk.x, dk.y, dk.z);
+    int delta_k_index = delta_k_all_index[temp_dk];
 
     hamilt::HContainer<std::complex<double>> *tmp_FR_container = FR[delta_k_index].get_FR_pointer();
     auto row_indexes = ParaV->get_indexes_row();
@@ -881,17 +644,18 @@ void toWannier90_LCAO::construct_overlap_table_project()
     int row = this->ParaV->get_row_size();
     int global_ir = 0;
 
-    for (int ir = 0; ir < row; ir++)
+    for (int ir = 0; ir < row; ir+=GlobalV::NPOL)
     {
         global_ir = ParaV->local2global_row(ir);
+        int orb_index_row = global_ir / GlobalV::NPOL;
 
         for (int wannier_index = 0; wannier_index < num_wannier; wannier_index++)
         {
             if (L[wannier_index] >= 0)
             {
-                center2_orb11_A[iw2iorb[global_ir]][wannier_index].insert(
+                center2_orb11_A[iw2iorb[orb_index_row]][wannier_index].insert(
                     std::make_pair(0, Center2_Orb::Orb11(
-                        orbs[iw2it[global_ir]][iw2iL[global_ir]][iw2iN[global_ir]], 
+                        orbs[iw2it[orb_index_row]][iw2iL[orb_index_row]][iw2iN[orb_index_row]], 
                         A_orbs[wannier_index][0], 
                         MOT, MGT)
                     )
@@ -907,9 +671,9 @@ void toWannier90_LCAO::construct_overlap_table_project()
 
                 for (int tmp_L = 0; tmp_L < tmp_size; tmp_L++)
                 {
-                    center2_orb11_A[iw2iorb[global_ir]][wannier_index].insert(
+                    center2_orb11_A[iw2iorb[orb_index_row]][wannier_index].insert(
                         std::make_pair(tmp_L, Center2_Orb::Orb11(
-                            orbs[iw2it[global_ir]][iw2iL[global_ir]][iw2iN[global_ir]], 
+                            orbs[iw2it[orb_index_row]][iw2iL[orb_index_row]][iw2iN[orb_index_row]], 
                             A_orbs[wannier_index][tmp_L], 
                             MOT, MGT)
                         )

@@ -50,6 +50,24 @@
 #include "module_hamilt_lcao/module_hcontainer/hcontainer.h"
 #include "fR_overlap.h"
 
+class Coordinate_3D
+{
+public:
+    double x = 0;
+    double y = 0;
+    double z = 0;
+
+    Coordinate_3D(double x=0.0, double y=0.0, double z=0.0): x(x), y(y), z(z) {}
+
+    bool operator<(const Coordinate_3D& other) const 
+    {
+        const double threshold = 1e-8;
+        if (std::abs(x - other.x) >= threshold) return x < other.x;
+        if (std::abs(y - other.y) >= threshold) return y < other.y;
+        return std::abs(z - other.z) >= threshold && z < other.z;
+    }
+};
+
 class toWannier90_LCAO : public toWannier90
 {
   public:
@@ -119,27 +137,8 @@ class toWannier90_LCAO : public toWannier90
     void set_R_coor();
     void count_delta_k(const K_Vectors& kv);
 
-    std::vector<Abfs::Vector3_Order<double>> delta_k_all;
-    std::map<Abfs::Vector3_Order<double>, int> delta_k_all_index;
-
-
-
-    void cal_orb_expidkr_overlap_table();
-    void cal_orb_expidkr_overlap(
-      const int &iw1, 
-      const ModuleBase::Vector3<double> &iw1_center, 
-      const int &iw2, 
-      const ModuleBase::Vector3<double> &iw2_center,
-      std::vector<std::complex<double>> &overlap
-    );
-    double Polynomial_Interpolation(
-      const double *psi_r,
-      const int &mesh_r,
-      const double &dr,
-      const double &x	
-    );
-
-    std::vector<std::vector<std::vector<std::vector<std::complex<double>>>>> psi_eidkr_psi_R;
+    std::vector<Coordinate_3D> delta_k_all;
+    std::map<Coordinate_3D, int> delta_k_all_index;
 
     void unkdotkb(
       const K_Vectors& kv, 

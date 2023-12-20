@@ -581,6 +581,7 @@ void ESolver_KS_LCAO<TK, TR>::nscf()
     // add by jingan in 2018.11.7
     if (GlobalV::CALCULATION == "nscf" && INPUT.towannier90)
     {
+#ifdef __LCAO
         if (INPUT.wannier_method == 1)
         {
             toWannier90_LCAO_IN_PW myWannier(
@@ -609,6 +610,7 @@ void ESolver_KS_LCAO<TK, TR>::nscf()
 
             myWannier.calculate(this->pelec->ekb, this->kv, *(this->psi), this->LOWF.ParaV);
         }
+#endif
     }
 
     // add by jingan
